@@ -47,29 +47,27 @@ class EmbedSignature(CythonTransform):
             result = node.name
         return result
 
-    def _fmt_arg_defv(self, arg):
-        default_val = arg.default
-        if not default_val:
+    def _fmt_expression(self, node):
+        if node is None:
             return None
-        if isinstance(default_val, ExprNodes.NullNode):
+        if isinstance(node, ExprNodes.NullNode):
             return 'NULL'
         try:
-            denv = self.denv  # XXX
-            ctval = default_val.compile_time_value(self.denv)
+            ctval = node.compile_time_value(self.denv)
             repr_val = repr(ctval)
-            if isinstance(default_val, ExprNodes.UnicodeNode):
+            if isinstance(node, ExprNodes.UnicodeNode):
                 if repr_val[:1] != 'u':
                     return u'u%s' % repr_val
-            elif isinstance(default_val, ExprNodes.BytesNode):
+            elif isinstance(node, ExprNodes.BytesNode):
                 if repr_val[:1] != 'b':
                     return u'b%s' % repr_val
-            elif isinstance(default_val, ExprNodes.StringNode):
+            elif isinstance(node, ExprNodes.StringNode):
                 if repr_val[:1] in 'ub':
                     return repr_val[1:]
             return repr_val
         except Exception:
             try:
-                return self._fmt_expr_node(default_val)
+                return self._fmt_expr_node(node)
             except AttributeError:
                 return '<???>'
 
@@ -78,11 +76,23 @@ class EmbedSignature(CythonTransform):
             doc = arg.name
         else:
             doc = arg.type.declaration_code(arg.name, for_display=1)
-        if arg.default:
-            arg_defv = self._fmt_arg_defv(arg)
-            if arg_defv:
-                doc = doc + ('=%s' % arg_defv)
+
+        annotation = self._fmt_expression(arg.annotation)
+        default_value = self._fmt_expression(arg.default)
+        if annotation:
+            doc = doc + (': %s' % annotation)
+            if default_value:
+                doc = doc + (' = %s' % default_value)
+        elif default_value:
+            doc = doc + ('=%s' % default_value)
         return doc
+
+    def _fmt_star_arg(self, arg):
+        arg_doc = arg.name
+        annotation = self._fmt_expression(arg.annotation)
+        if annotation:
+            arg_doc = arg_doc + (': %s' % annotation)
+        return arg_doc
 
     def _fmt_arglist(self, args,
                      npargs=0, pargs=None,
@@ -94,11 +104,13 @@ class EmbedSignature(CythonTransform):
                 arg_doc = self._fmt_arg(arg)
                 arglist.append(arg_doc)
         if pargs:
-            arglist.insert(npargs, '*%s' % pargs.name)
+            arg_doc = self._fmt_star_arg(pargs)
+            arglist.insert(npargs, '*%s' % arg_doc)
         elif nkargs:
             arglist.insert(npargs, '*')
         if kargs:
-            arglist.append('**%s' % kargs.name)
+            arg_doc = self._fmt_star_arg(kargs)
+            arglist.append('**%s' % arg_doc)
         return arglist
 
     def _fmt_ret_type(self, ret):
@@ -110,6 +122,7 @@ class EmbedSignature(CythonTransform):
     def _fmt_signature(self, cls_name, func_name, args,
                        npargs=0, pargs=None,
                        nkargs=0, kargs=None,
+                       return_expr=None,
                        return_type=None, hide_self=False):
         arglist = self._fmt_arglist(args,
                                     npargs, pargs,
@@ -119,10 +132,13 @@ class EmbedSignature(CythonTransform):
         func_doc = '%s(%s)' % (func_name, arglist_doc)
         if cls_name:
             func_doc = '%s.%s' % (cls_name, func_doc)
-        if return_type:
+        ret_doc = None
+        if return_expr:
+            ret_doc = self._fmt_expression(return_expr)
+        elif return_type:
             ret_doc = self._fmt_ret_type(return_type)
-            if ret_doc:
-                func_doc = '%s -> %s' % (func_doc, ret_doc)
+        if ret_doc:
+            func_doc = '%s -> %s' % (func_doc, ret_doc)
         return func_doc
 
     def _embed_signature(self, signature, node_doc):
@@ -177,6 +193,7 @@ class EmbedSignature(CythonTransform):
             class_name, func_name, node.args,
             npargs, node.star_arg,
             nkargs, node.starstar_arg,
+            return_expr=node.return_type_annotation,
             return_type=None, hide_self=hide_self)
         if signature:
             if is_constructor:

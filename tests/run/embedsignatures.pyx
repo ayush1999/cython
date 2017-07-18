@@ -80,6 +80,9 @@ __doc__ = ur"""
     >>> print (Ext.m.__doc__)
     Ext.m(self, a=u'spam')
 
+    >>> print (Ext.n.__doc__)
+    Ext.n(self, a: int, b: float = 1.0, *args: tuple, **kwargs: dict) -> None
+
     >>> print (Ext.get_int.__doc__)
     Ext.get_int(self) -> int
 
@@ -257,6 +260,9 @@ cdef class Ext:
         pass
 
     def m(self, a=u'spam'):
+        pass
+
+    def n(self, a: int, b: float = 1.0, *args: tuple, **kwargs: dict) -> None:
         pass
 
     cpdef int get_int(self):
